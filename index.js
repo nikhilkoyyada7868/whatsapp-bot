@@ -35,20 +35,31 @@ app.post("/whatsapp", (req, res) => {
         Grateful: ["Thankful", "Blessed", "Appreciative", "Connected", "Satisfied"]
     };
 
-    // STEP 1: Emotion selection
-    if (emotions[message]) {
-        const emotion = emotions[message];
-        userState[from] = { stage: "SUB_EMOTION", emotion };
+    // =========================
+    // STEP 3: WHY (check FIRST)
+    // =========================
+    if (userState[from]?.stage === "WHY") {
+        const note = message.toUpperCase() === "SKIP" ? "" : message;
+        const summary = userState[from];
 
-        let reply = `You selected *${emotion}*.\n\nChoose a sub-emotion:\n`;
-        subEmotions[emotion].forEach((sub, i) => {
-            reply += `${i + 1}) ${sub}\n`;
-        });
+        db.run(
+            `INSERT INTO moods (phone, emotion, sub_emotion, note)
+       VALUES (?, ?, ?, ?)`,
+            [from, summary.emotion, summary.subEmotion, note]
+        );
 
-        twiml.message(reply);
+        twiml.message(
+            `Your mood has been saved ✅\n\n` +
+            `Emotion: *${summary.emotion}*\n` +
+            `Sub-emotion: *${summary.subEmotion}*`
+        );
+
+        delete userState[from];
     }
 
-    // STEP 2: Sub-emotion selection
+    // =========================
+    // STEP 2: SUB-EMOTION
+    // =========================
     else if (userState[from]?.stage === "SUB_EMOTION") {
         const emotion = userState[from].emotion;
         const options = subEmotions[emotion];
@@ -68,32 +79,24 @@ app.post("/whatsapp", (req, res) => {
         }
     }
 
-    // STEP 3: Optional "why"
-    else if (userState[from]?.stage === "WHY") {
-        const note = message.toUpperCase() === "SKIP" ? "" : message;
+    // =========================
+    // STEP 1: EMOTION
+    // =========================
+    else if (emotions[message]) {
+        const emotion = emotions[message];
+        userState[from] = { stage: "SUB_EMOTION", emotion };
 
-        const summary = userState[from];
-
-        // (For now, just log — DB comes next step)
-        console.log({
-            user: from,
-            emotion: summary.emotion,
-            subEmotion: summary.subEmotion,
-            note,
-            date: new Date()
+        let reply = `You selected *${emotion}*.\n\nChoose a sub-emotion:\n`;
+        subEmotions[emotion].forEach((sub, i) => {
+            reply += `${i + 1}) ${sub}\n`;
         });
 
-        twiml.message(
-            `Your mood has been saved ✅\n\n` +
-            `Emotion: *${summary.emotion}*\n` +
-            `Sub-emotion: *${summary.subEmotion}*`
-        );
-
-        // Reset conversation
-        delete userState[from];
+        twiml.message(reply);
     }
 
+    // =========================
     // DEFAULT / FIRST MESSAGE
+    // =========================
     else {
         twiml.message(
             "How’s your mood today?\n\n" +
@@ -112,6 +115,7 @@ app.post("/whatsapp", (req, res) => {
 
     res.type("text/xml").send(twiml.toString());
 });
+
 
 app.listen(3000, () => {
     console.log("Server running on http://localhost:3000");
