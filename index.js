@@ -2,6 +2,24 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const twilio = require("twilio");
 
+const sqlite3 = require("sqlite3").verbose();
+
+// Open (or create) SQLite database file
+const db = new sqlite3.Database("./moods.db");
+
+// Create table if it doesn't exist
+db.run(`
+  CREATE TABLE IF NOT EXISTS moods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT,
+    emotion TEXT,
+    sub_emotion TEXT,
+    note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+
 const app = express();
 const userState = {};
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -44,9 +62,15 @@ app.post("/whatsapp", (req, res) => {
 
         db.run(
             `INSERT INTO moods (phone, emotion, sub_emotion, note)
-       VALUES (?, ?, ?, ?)`,
-            [from, summary.emotion, summary.subEmotion, note]
+   VALUES (?, ?, ?, ?)`,
+            [from, summary.emotion, summary.subEmotion, note],
+            (err) => {
+                if (err) {
+                    console.error("DB error:", err);
+                }
+            }
         );
+
 
         twiml.message(
             `Your mood has been saved ✅\n\n` +
@@ -114,6 +138,19 @@ app.post("/whatsapp", (req, res) => {
     }
 
     res.type("text/xml").send(twiml.toString());
+});
+
+app.get("/moods", (req, res) => {
+    db.all(
+        "SELECT phone, emotion, sub_emotion, note, created_at FROM moods ORDER BY created_at DESC",
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            res.json(rows);
+        }
+    );
 });
 
 
