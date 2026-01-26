@@ -2,13 +2,13 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const twilio = require("twilio");
 
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 
-// Open (or create) SQLite database file
-const db = new sqlite3.Database("./moods.db");
+// Create / open DB
+const db = new Database("moods.db");
 
-// Create table if it doesn't exist
-db.run(`
+// Create table if not exists
+db.prepare(`
   CREATE TABLE IF NOT EXISTS moods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     phone TEXT,
@@ -17,7 +17,8 @@ db.run(`
     note TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
-`);
+`).run();
+
 
 
 const app = express();
@@ -57,19 +58,14 @@ app.post("/whatsapp", (req, res) => {
     // STEP 3: WHY (check FIRST)
     // =========================
     if (userState[from]?.stage === "WHY") {
-        const note = message.toUpperCase() === "SKIP" ? "" : message;
+        const note = message.toUpperCase() === "SKIP" ? null : message;
         const summary = userState[from];
 
-        db.run(
+        db.prepare(
             `INSERT INTO moods (phone, emotion, sub_emotion, note)
-   VALUES (?, ?, ?, ?)`,
-            [from, summary.emotion, summary.subEmotion, note],
-            (err) => {
-                if (err) {
-                    console.error("DB error:", err);
-                }
-            }
-        );
+   VALUES (?, ?, ?, ?)`
+        ).run(from, summary.emotion, summary.subEmotion, note);
+
 
 
         twiml.message(
@@ -141,17 +137,19 @@ app.post("/whatsapp", (req, res) => {
 });
 
 app.get("/moods", (req, res) => {
-    db.all(
-        "SELECT phone, emotion, sub_emotion, note, created_at FROM moods ORDER BY created_at DESC",
-        [],
-        (err, rows) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            res.json(rows);
-        }
-    );
+    try {
+        const rows = db
+            .prepare(
+                "SELECT phone, emotion, sub_emotion, note, created_at FROM moods ORDER BY created_at DESC"
+            )
+            .all();
+
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
+
 
 
 app.listen(3000, () => {

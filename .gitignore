@@ -1,0 +1,4 @@
+node_modules/
+moods.db
+.DS_Store
+.env
